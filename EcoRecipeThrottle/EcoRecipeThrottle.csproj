@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Eco.ReferenceAssemblies" Version="0.9.7.13-beta-release-506" />
+  </ItemGroup>
+
 </Project>

@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Eco.Mod.VeN.HarmonyShard;
 
 using Eco.Gameplay.Skills;
+using Eco.Gameplay.Items;
 using Eco.Core.Items;
 
 #pragma warning disable CA1416 // Проверка совместимости платформы
@@ -229,7 +230,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
         private Dictionary<RecipeFamily, int> groupsRecipeFamily = new Dictionary<RecipeFamily, int>();
         private Dictionary<Skill, int> groupsSkill = new Dictionary<Skill, int>();
-        private Dictionary<Item, int> groupsItems = new Dictionary<Item, int>();
+        private Dictionary<Type, int> groupsItems = new Dictionary<Type, int>();
         void CreateAndPrintGroups()
         {
             groupsRecipeFamily.Clear();
@@ -247,7 +248,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
                 if (SkillScrollItem != null)
                 {
-                    groupsItems.Add(SkillScrollItem, tGroup);
+                    groupsItems.Add(SkillScrollItem.GetType(), tGroup);
                     IEnumerable<RecipeFamily> ScrollrecipeFamilies = RecipeFamily.GetRecipesForItem(SkillScrollItem.GetType());
                     foreach (RecipeFamily recipe in ScrollrecipeFamilies)
                     {
@@ -257,7 +258,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
                 if(SkillScrollItem != null)
                 {
-                    groupsItems.Add(SkillBookItem, tGroup);
+                    groupsItems.Add(SkillBookItem.GetType(), tGroup);
                     IEnumerable<RecipeFamily> BookrecipeFamilies = RecipeFamily.GetRecipesForItem(SkillBookItem.GetType());
                     foreach (RecipeFamily recipe in BookrecipeFamilies)
                     {
@@ -269,28 +270,119 @@ namespace Eco.Mod.VeN.RecipeThrottle
             //Заполнение группы 0 у items без рецептов
             foreach (Item item in Item.AllItems)
             {
-                if (groupsItems.ContainsKey(item)) continue;
+                if (groupsItems.ContainsKey(item.GetType())) continue;
                 if (RecipeFamily.GetRecipesForItem(item.GetType()).Count() == 0)
                 {
-                    groupsItems.Add(item, 0);
+                    groupsItems.Add(item.GetType(), 0);
                 }
             }
-            
+
+
+            foreach (var i in groupsSkill)
+            {
+                ConsoleLogWriter.Instance.Write("groupsSkill " + (i.Value.ToString() + " | " + i.Key.DisplayName) + "\n");
+            }
+
 
             //Циклы обхода по рецептам с попыткой посчитать группу
-            for (int i = 0;i<20;i++ ) 
+            for (int i = 1;i<20;i++ ) 
             {
+                ConsoleLogWriter.Instance.Write("groupsRecipeFamily.Count = " + groupsRecipeFamily.Count + "\n");
+
+                ConsoleLogWriter.Instance.Write("groupsSkill.Count = " + groupsSkill.Count + "\n");
+                ConsoleLogWriter.Instance.Write("groupsItems.Count = " + groupsItems.Count + "\n");
+                ConsoleLogWriter.Instance.Write("RecipeFamily.AllRecipes.Length = " + RecipeFamily.AllRecipes.Length + "\n");
+                ConsoleLogWriter.Instance.Write(" Main recipe cycle round " + i + "\n");
                 foreach (RecipeFamily recipeFamily in (RecipeFamily.AllRecipes))
                 {
                     if (groupsRecipeFamily.ContainsKey(recipeFamily)) continue;
+                    ConsoleLogWriter.Instance.Write("Try to calc Group for RecipeFamily = " + recipeFamily.DisplayName.ToString() + "\n");
+                    // Получить неободимые skill для рецепта
+                    RequiresSkillAttribute[] skills = recipeFamily.RequiredSkills;
+                    // Получить ингредиенты для рецепта
+                    IngredientElement[] Ingredients = recipeFamily.Ingredients;
+                    // Получить продкцию для рецепта
+                    CraftingElement[] Products = recipeFamily.Product;
 
+                    // Вычислить группу
+                    int t = 0;
+                    bool fail = false;
+                    foreach (IngredientElement ingredient in Ingredients)
+                    {
+                        Item item = null;
+                        if (ingredient.Tag != null)
+                        {
+                            int internalT = -1;
+                            foreach (Type type in TagManager.TagToTypes.GetOrDefault<Eco.Gameplay.Items.Tag, HashSet<Type>>(ingredient.Tag))
+                            {
+                                if (!groupsItems.ContainsKey(type))
+                                {
+                                    ConsoleLogWriter.Instance.Write(" Fail search item in tag " + type.ToString() + "\n");
+                                    fail = true;
+                                }
+                                else
+                                {
+                                    if (groupsItems[type] < internalT || internalT < 0) internalT = groupsItems[type];
+                                }
+                            }
+                            if (internalT > t) t = internalT;
+                        }
+                        else if (ingredient.Item != null)
+                        {
+                            if (!groupsItems.ContainsKey(ingredient.Item.GetType()))
+                            {
+                                ConsoleLogWriter.Instance.Write(" Fail search item as item " + ingredient.Item.ToString() + "\n");
+                                fail = true;
+                            }
+                            else
+                            {
+                                if (groupsItems[ingredient.Item.GetType()] > t) t = groupsItems[ingredient.Item.GetType()];
+                            }
+                        }
+                        else ConsoleLogWriter.Instance.Write(" Erorr in tag !!!\n");
+                    }
+
+                    foreach (RequiresSkillAttribute reqskill in skills)
+                    {
+                        if (!groupsSkill.ContainsKey(reqskill.SkillItem))
+                        {
+                            ConsoleLogWriter.Instance.Write(" Fail search skill " + reqskill.SkillItem.ToString() + "\n");
+                            fail = true;
+                        }
+                        else if (groupsSkill[reqskill.SkillItem] > t)
+                        {
+                            //ConsoleLogWriter.Instance.Write(" Skill " + reqskill.SkillItem.ToString() + " set t to " + groupsSkill[reqskill.SkillItem] + "\n");
+                            t = groupsSkill[reqskill.SkillItem];
+                        }
+                    }
+
+                    if (!fail)
+                    {
+                        // записать группу для product
+                        foreach (Recipe recipe in recipeFamily.Recipes)
+                        {
+                            foreach (CraftingElement product in recipe.Items)
+                            {
+                                if (!groupsItems.ContainsKey(product.Item.GetType()))
+                                {
+                                    ConsoleLogWriter.Instance.Write("Add to groupsItems new Item " + product.Item.GetType().ToString() + "| " + t + "\n");
+                                    groupsItems.Add(product.Item.GetType(), t);
+                                }
+
+                            }
+                        }
+
+                        // записать группу для RecipeFamily
+                        groupsRecipeFamily.Add(recipeFamily, t);
+                        ConsoleLogWriter.Instance.Write("Add recipeFamily " + recipeFamily.DisplayName.ToString() + "| " + t + "\n");
+                    }
                 }
             }
 
 
             foreach (var i in groupsRecipeFamily)
             {
-                ConsoleLogWriter.Instance.Write( (i.Value.ToString() + " | " + i.Key.DisplayName) + "\n"  );
+                ConsoleLogWriter.Instance.Write( "TGroup: " + (i.Value.ToString() + " | RecipeFamily: " + i.Key.DisplayName) + "\n"  );
             }
             
 
