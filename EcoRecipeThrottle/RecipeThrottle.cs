@@ -177,8 +177,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                         foreach (IngredientElement ingredientElement in recept.Ingredients)
                         {
                             RecipeThrottle.InsertRecipeThrottleK(ingredientElement, k);
-                        
-
                             i++;
                         }
                         recept.FirePropertyChanged("Ingredients");
@@ -285,28 +283,25 @@ namespace Eco.Mod.VeN.RecipeThrottle
                             int tagItemGroup = -1;
                             foreach (Type type in TagManager.TagToTypes.GetOrDefault<Eco.Gameplay.Items.Tag, HashSet<Type>>(ingredient.Tag))
                             {
-                                if (!itemTypeGroup.ContainsKey(type)) itemGroupSearchFail = true;
-                                else
-                                {
-                                    if (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0) tagItemGroup = itemTypeGroup[type];
-                                }
+                                if (itemTypeGroup.ContainsKey(type) && (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0))
+                                    tagItemGroup = itemTypeGroup[type];
+                                else itemGroupSearchFail = true;
                             }
                             if (tagItemGroup > calcGroup) calcGroup = tagItemGroup;
                         }
                         else if (ingredient.Item != null)
                         {
-                            if (!itemTypeGroup.ContainsKey(ingredient.Item.GetType())) itemGroupSearchFail = true;
-                            else if (itemTypeGroup[ingredient.Item.GetType()] > calcGroup) calcGroup = itemTypeGroup[ingredient.Item.GetType()];
+                            if (itemTypeGroup.ContainsKey(ingredient.Item.GetType()) && itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
+                                calcGroup = itemTypeGroup[ingredient.Item.GetType()];
+                            else itemGroupSearchFail = true;
                         }
                     }
 
                     foreach (RequiresSkillAttribute reqskill in recipeFamily.RequiredSkills)
                     {
-                        if (!skillGroup.ContainsKey(reqskill.SkillItem)) itemGroupSearchFail = true;
-                        else
-                        {
-                            if (skillGroup[reqskill.SkillItem] > calcGroup) calcGroup = skillGroup[reqskill.SkillItem];
-                        }
+                        if (skillGroup.ContainsKey(reqskill.SkillItem) && skillGroup[reqskill.SkillItem] > calcGroup)
+                            calcGroup = skillGroup[reqskill.SkillItem];
+                        else itemGroupSearchFail = true;
                     }
 
                     if (!itemGroupSearchFail)
