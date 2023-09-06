@@ -350,7 +350,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
             return Task.CompletedTask;
         }
 
-        string GetDisplayTitle() => "RecipeFamily Grops";
+        public string GetDisplayTitle() => "RecipeFamily grops";
         public string GetDisplayText()
         {
             StringBuilder stringBuilder = new StringBuilder(1024);
