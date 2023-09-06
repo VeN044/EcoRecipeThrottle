@@ -17,6 +17,8 @@ using Eco.Mod.VeN.HarmonyShard;
 using Eco.Gameplay.Skills;
 using Eco.Gameplay.Items;
 using Eco.Core.Items;
+using Eco.Simulation.Agents.AI;
+using Eco.ModKit;
 
 #pragma warning disable CA1416 // Проверка совместимости платформы
 
@@ -25,17 +27,19 @@ namespace Eco.Mod.VeN.RecipeThrottle
     public class RecipeThrottle
     {
         /// Manipulete Wraping of IDynamicValue to insert Multiply coefficient to it.
-        private Dictionary<RecipeFamily, int> recipeFamilyGroup;
+        public Dictionary<RecipeFamily, int> recipeFamilyGroup;
+        private PluginConfig<RecipeThrottleConfig>? pluginConfig;
 
         public RecipeThrottle() 
         {
-            recipeFamilyGroup = new Dictionary<RecipeFamily, int>();
+            this.recipeFamilyGroup = new Dictionary<RecipeFamily, int>();
+            this.pluginConfig = null;
         }
 
-        public void Initialize ()
+        public void Initialize (PluginConfig<RecipeThrottleConfig> pluginConfig)
         {
-
-
+            this.pluginConfig=pluginConfig;
+            UpdateRecipeFamilyGroup();  
         }
 
 
@@ -111,11 +115,13 @@ namespace Eco.Mod.VeN.RecipeThrottle
             multiDynamicValue.Values[2].FirePropertyChanged("GetBaseValue");
         }
 
-        private void UpdateRecipeFamilyGroup()
+        public void UpdateRecipeFamilyGroup()
         {
-            recipeFamilyGroup.Clear();
+            this.recipeFamilyGroup.Clear();
             Dictionary<Skill, int> skillGroup = new Dictionary<Skill, int>();
             Dictionary<Type, int> itemTypeGroup = new Dictionary<Type, int>();
+
+            ConsoleLogWriter.Instance.Write("Start RecipeFamily Groups update " + "\n");
 
             // Заполнение группы у скилов
             foreach (Skill skill in Skill.AllSkills)
@@ -130,14 +136,14 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 {
                     itemTypeGroup.Add(SkillScrollItem.GetType(), calcGroup);
                     RecipeFamily.GetRecipesForItem(SkillScrollItem.GetType())
-                        .ForEach(recipe => recipeFamilyGroup.Add(recipe, calcGroup));
+                        .ForEach(recipe => this.recipeFamilyGroup.Add(recipe, calcGroup));
                 }
 
                 if (SkillScrollItem != null)
                 {
                     itemTypeGroup.Add(SkillBookItem.GetType(), calcGroup);
                     RecipeFamily.GetRecipesForItem(SkillBookItem.GetType())
-                        .ForEach(recipe => recipeFamilyGroup.Add(recipe, calcGroup));
+                        .ForEach(recipe => this.recipeFamilyGroup.Add(recipe, calcGroup));
                 }
             }
 
@@ -149,15 +155,16 @@ namespace Eco.Mod.VeN.RecipeThrottle
             }
 
             //Циклы обхода по рецептам с попыткой посчитать группу
-            for (int i = 1; i < 20 || recipeFamilyGroup.Count >= RecipeFamily.AllRecipes.Length; i++)
+            for (int i = 1; i < 20 ; i++)
+            // && this.recipeFamilyGroup.Count <= RecipeFamily.AllRecipes.Length
             {
                 foreach (RecipeFamily recipeFamily in RecipeFamily.AllRecipes)
                 {
-                    if (recipeFamilyGroup.ContainsKey(recipeFamily)) continue;
+                    if (this.recipeFamilyGroup.ContainsKey(recipeFamily)) continue;
 
                     int calcGroup = 0;
                     bool itemGroupSearchFail = false;
-
+                    
                     foreach (IngredientElement ingredient in recipeFamily.Ingredients)
                     {
                         if (ingredient.Tag != null)
@@ -165,25 +172,28 @@ namespace Eco.Mod.VeN.RecipeThrottle
                             int tagItemGroup = -1;
                             foreach (Type type in TagManager.TagToTypes.GetOrDefault<Eco.Gameplay.Items.Tag, HashSet<Type>>(ingredient.Tag))
                             {
-                                if (itemTypeGroup.ContainsKey(type) && (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0))
-                                    tagItemGroup = itemTypeGroup[type];
-                                else itemGroupSearchFail = true;
+                                if (!itemTypeGroup.ContainsKey(type))
+                                    itemGroupSearchFail = true;
+                                else if (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0)
+                                        tagItemGroup = itemTypeGroup[type];
                             }
                             if (tagItemGroup > calcGroup) calcGroup = tagItemGroup;
                         }
                         else if (ingredient.Item != null)
-                        {
-                            if (itemTypeGroup.ContainsKey(ingredient.Item.GetType()) && itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
-                                calcGroup = itemTypeGroup[ingredient.Item.GetType()];
-                            else itemGroupSearchFail = true;
+                        {    
+                            if (!itemTypeGroup.ContainsKey(ingredient.Item.GetType()))
+                                itemGroupSearchFail = true;
+                            else if(itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
+                                    calcGroup = itemTypeGroup[ingredient.Item.GetType()];
                         }
                     }
 
                     foreach (RequiresSkillAttribute reqskill in recipeFamily.RequiredSkills)
                     {
-                        if (skillGroup.ContainsKey(reqskill.SkillItem) && skillGroup[reqskill.SkillItem] > calcGroup)
-                            calcGroup = skillGroup[reqskill.SkillItem];
-                        else itemGroupSearchFail = true;
+                        if (!skillGroup.ContainsKey(reqskill.SkillItem))
+                            itemGroupSearchFail = true;
+                        else if(skillGroup[reqskill.SkillItem] > calcGroup)
+                                calcGroup = skillGroup[reqskill.SkillItem];
                     }
 
                     if (!itemGroupSearchFail)
@@ -193,12 +203,59 @@ namespace Eco.Mod.VeN.RecipeThrottle
                             .Where(product => !itemTypeGroup.ContainsKey(product.Item.GetType()))
                             .ToList()
                             .ForEach(product => itemTypeGroup.Add(product.Item.GetType(), calcGroup));
-                        recipeFamilyGroup.Add(recipeFamily, calcGroup);
+                        this.recipeFamilyGroup.Add(recipeFamily, calcGroup);
                     }
                 }
 
             }
+            ConsoleLogWriter.Instance.Write("groupsRecipeFamily.Count = " + recipeFamilyGroup.Count + "\n");
+            ConsoleLogWriter.Instance.Write("groupsSkill.Count = " + skillGroup.Count + "\n");
+            ConsoleLogWriter.Instance.Write("groupsItems.Count = " + itemTypeGroup.Count + "\n");
+            ConsoleLogWriter.Instance.Write("RecipeFamily.AllRecipes.Length = " + RecipeFamily.AllRecipes.Length + "\n");
+        }
 
+        public float CalculateQuantityMultiplier(RecipeFamily recipeFamily)
+        {
+            float globalC = this.pluginConfig.Config.GlobalCoefficient;
+
+            float result = 1f;
+
+            if (recipeFamilyGroup.ContainsKey(recipeFamily))
+            {
+                switch (recipeFamilyGroup[recipeFamily])
+                {
+                    case 0:
+                        result = globalC * this.pluginConfig.Config.Group0Multiplier;
+                        break;
+                    case 1:
+                        result = globalC * this.pluginConfig.Config.Group1Multiplier;
+                        break;
+                    case 2:
+                        result = globalC * this.pluginConfig.Config.Group2Multiplier;
+                        break;
+                    case 3:
+                        result = globalC * this.pluginConfig.Config.Group3Multiplier;
+                        break;
+                    case 4:
+                        result = globalC * this.pluginConfig.Config.Group4Multiplier;
+                        break;
+                    case 5:
+                        result = globalC * this.pluginConfig.Config.Group5Multiplier;
+                        break;
+                    case 6:
+                        result = globalC * this.pluginConfig.Config.Group6Multiplier;
+                        break;
+                    case 7:
+                        result = globalC * this.pluginConfig.Config.Group7Multiplier;
+                        break;
+                    case 8:
+                        result = globalC * this.pluginConfig.Config.Group8Multiplier;
+                        break;
+                }
+            }
+            else result = globalC;
+
+            return result;
         }
 
     }
@@ -206,13 +263,68 @@ namespace Eco.Mod.VeN.RecipeThrottle
     [Localized]
     public class RecipeThrottleConfig : Singleton<RecipeThrottleConfig>
     {
+        [LocCategory("Global")]
         [LocDescription("Enable RecipeThrottle wrap all Quantity values in every recipe in game to add aditional coefficient to it")]
-        public bool RecipeThrottleEnable { get; set; } = false;
+        public bool Enable { get; set; } = false;
 
+        [LocCategory("Global")]
         [LocDescription("The global coefficient affecting all recipes")]
-        public float RecipeThrottleGlobalKValue { get; set; } = 1f;
+        public float GlobalCoefficient { get; set; } = 1f;
+
+        [LocCategory("Global")]
+        [LocDescription("The global coefficient affecting the quantity. !! Will be implemented in the next release !! ")]
+        public float impactsQuantity { get; set; } = 1f;
+
+        [LocCategory("Global")]
+        [LocDescription("The global coefficient affecting the crafting time. !! Will be implemented in the next release !! ")]
+        public float impactsCraftTime { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 0 ")]
+        public float Group0Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 1 ")]
+        public float Group1Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 2 ")]
+        public float Group2Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 3 ")]
+        public float Group3Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 4 ")]
+        public float Group4Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 5 ")]
+        public float Group5Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 6 ")]
+        public float Group6Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 7 ")]
+        public float Group7Multiplier { get; set; } = 1f;
+
+        [LocCategory("Groups")]
+        [LocDescription("Group 8 ")]
+        public float Group8Multiplier { get; set; } = 1f;
+
     }
-    public class RecipeThrottlePlugin : IModKitPlugin, IInitializablePlugin, IShutdownablePlugin, IConfigurablePlugin
+    public class RecipeThrottlePlugin : 
+        IModKitPlugin,
+        IDisplayablePlugin,
+        IInitializablePlugin, 
+        IShutdownablePlugin, 
+        IConfigurablePlugin,
+        IHasDisplayTabs,
+        IGUIPlugin,
+        IDisplayTab
     {
         PluginConfig<RecipeThrottleConfig> config;
         public RecipeThrottle recipeThrottle = new RecipeThrottle();
@@ -228,7 +340,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
         {
             this.status = "Ready.";
             this.config = new PluginConfig<RecipeThrottleConfig>("RecipeThrottleConfig");  // Load our plugin configuration
-            recipeThrottle.Initialize();
+            recipeThrottle.Initialize(this.config);
             
             //UserManager.OnUserLoggedIn.Add(this.OnUserLogin);                   // Register our OnUserLoggedIn event handler for showing players our welcome message.
         }
@@ -237,20 +349,32 @@ namespace Eco.Mod.VeN.RecipeThrottle
             //UserManager.OnUserLoggedIn.Remove(this.OnUserLogin);                // Remove our OnUserLoggedIn event handler
             return Task.CompletedTask;
         }
+
+        string GetDisplayTitle() => "RecipeFamily Grops";
+        public string GetDisplayText()
+        {
+            StringBuilder stringBuilder = new StringBuilder(1024);
+            stringBuilder.AppendLine((string)Localizer.DoStr("RecipeFamily Group:"));
+            foreach (var line in this.recipeThrottle.recipeFamilyGroup)
+                stringBuilder.AppendLine($"{line.Value} | {line.Key.DisplayName.ToString()}");
+            stringBuilder.AppendLine();
+
+            return stringBuilder.ToString();
+        }
         public object GetEditObject() => this.config.Config;
         public void OnEditObjectChanged(object o, string param)
         {
-            if (param == "RecipeThrottleEnable")
-                OnRecipeThrottleEnableChanged();
-            else if (param == "RecipeThrottleGlobalKValue" && this.config.Config.RecipeThrottleEnable)
+            if (param == "Enable")
+                OnParamEnableChanged();
+            else if (this.config.Config.Enable)
             {
-                OnRecipeThrottleGlobalStaticValueChanged();
+                OnGlobalCoefficientChanged();
             }
+                 
         }
-        private void OnRecipeThrottleGlobalStaticValueChanged()
+        private void OnGlobalCoefficientChanged()
         {
-            float k = this.config.Config.RecipeThrottleGlobalKValue;
-            if (this.config.Config.RecipeThrottleEnable)
+            if (this.config.Config.Enable)
             {
                 foreach (RecipeFamily recipeFamily in (RecipeFamily.AllRecipes))
                 {
@@ -258,7 +382,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     {
                         foreach (IngredientElement ingredientElement in recept.Ingredients)
                         {
-                            RecipeThrottle.UpdateDynamicQuantityValueWrap(ingredientElement.Quantity, k);
+                            RecipeThrottle.UpdateDynamicQuantityValueWrap(ingredientElement.Quantity, recipeThrottle.CalculateQuantityMultiplier(recipeFamily));
                         }
                         recept.FirePropertyChanged("Ingredients");
                     }
@@ -268,12 +392,12 @@ namespace Eco.Mod.VeN.RecipeThrottle
             }
         }
 
-        private void OnRecipeThrottleEnableChanged()
+        private void OnParamEnableChanged()
         {
-            if (this.config.Config.RecipeThrottleEnable)
+            if (this.config.Config.Enable)
             {
                 int i = 0;
-                float k = this.config.Config.RecipeThrottleGlobalKValue;
+
                 ConsoleLogWriter.Instance.Write("RecipeThrottle: Try to inject Quantity value for " + RecipeFamily.AllRecipes.Length + " RecipeFamilys.\n");
                 foreach (RecipeFamily recipeFamily in (RecipeFamily.AllRecipes))
                 {
@@ -281,7 +405,7 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     {
                         foreach (IngredientElement ingredientElement in recept.Ingredients)
                         {
-                            RecipeThrottle.InsertRecipeThrottleK(ingredientElement, k);
+                            RecipeThrottle.InsertRecipeThrottleK(ingredientElement, recipeThrottle.CalculateQuantityMultiplier(recipeFamily));
                             i++;
                         }
                         recept.FirePropertyChanged("Ingredients");
@@ -329,6 +453,8 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 this.status = "Disabled.";
             }
         }
+
+
 
     }
 }
