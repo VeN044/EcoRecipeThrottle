@@ -19,11 +19,23 @@ using Eco.Gameplay.Items;
 using Eco.Core.Items;
 using Eco.Simulation.Agents.AI;
 using Eco.ModKit;
+using System.Collections;
+using Eco.Mods.TechTree;
+using Eco.Mod.VeN.RecipeThrottle;
 
 #pragma warning disable CA1416 // Проверка совместимости платформы
 
 namespace Eco.Mod.VeN.RecipeThrottle
 {
+    public enum TrottleImpact
+    {
+        None,
+        Low,
+        Medium,
+        Hight,
+        Full
+    }
+
     public class RecipeThrottle
     {
         /// Manipulete Wraping of IDynamicValue to insert Multiply coefficient to it.
@@ -123,30 +135,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
             ConsoleLogWriter.Instance.Write("Start RecipeFamily Groups update " + "\n");
 
-            // Заполнение группы у скилов
-            foreach (Skill skill in Skill.AllSkills)
-            {
-                Item SkillScrollItem = Item.Get(SkillsLookUp.SkillToSkillScroll.GetOrDefault<Type, Type>(skill.GetType()));
-                Item SkillBookItem = Item.Get(SkillsLookUp.SkillToSkillBook.GetOrDefault<Type, Type>(skill.GetType()));
-                int calcGroup = skill.Tier;
-
-                skillGroup.Add(skill, calcGroup);
-
-                if (SkillScrollItem != null)
-                {
-                    itemTypeGroup.Add(SkillScrollItem.GetType(), calcGroup);
-                    RecipeFamily.GetRecipesForItem(SkillScrollItem.GetType())
-                        .ForEach(recipe => this.recipeFamilyGroup.Add(recipe, calcGroup));
-                }
-
-                if (SkillScrollItem != null)
-                {
-                    itemTypeGroup.Add(SkillBookItem.GetType(), calcGroup);
-                    RecipeFamily.GetRecipesForItem(SkillBookItem.GetType())
-                        .ForEach(recipe => this.recipeFamilyGroup.Add(recipe, calcGroup));
-                }
-            }
-
             //Заполнение группы 0 у items без рецептов
             foreach (Item item in Item.AllItems)
             {
@@ -154,13 +142,25 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     itemTypeGroup.Add(item.GetType(), 0);
             }
 
-            //Циклы обхода по рецептам с попыткой посчитать группу
-            for (int i = 1; i < 20 ; i++)
-            // && this.recipeFamilyGroup.Count <= RecipeFamily.AllRecipes.Length
+            //Заполнение группы 0 у skill без книжек или листков
+            foreach (Skill skill in Skill.AllSkills)
             {
+                if ( RecipeFamily.GetRecipesForItem(SkillsLookUp.SkillToSkillBook.GetOrDefault<Type, Type>(skill.GetType())).Count<RecipeFamily>() == 0 )
+                    skillGroup.Add(skill, 1);
+            }
+
+            //Циклы обхода по рецептам с попыткой посчитать группу
+            bool PanicMode = false;
+            for (int i = 1; i < 20 && this.recipeFamilyGroup.Count <= RecipeFamily.AllRecipes.Length; i++)
+            {
+                bool pointOfInterest = true; //DELME
+                int changesCount = 0;
+
                 foreach (RecipeFamily recipeFamily in RecipeFamily.AllRecipes)
                 {
                     if (this.recipeFamilyGroup.ContainsKey(recipeFamily)) continue;
+                    if (recipeFamily.DisplayName.ToString() == "Gathering Research Paper Basic") pointOfInterest = true;
+
 
                     int calcGroup = 0;
                     bool itemGroupSearchFail = false;
@@ -170,44 +170,103 @@ namespace Eco.Mod.VeN.RecipeThrottle
                         if (ingredient.Tag != null)
                         {
                             int tagItemGroup = -1;
+                            int goodItemsInTagCount = 0;
+                            bool saveGroupSearchFail = itemGroupSearchFail;
+
                             foreach (Type type in TagManager.TagToTypes.GetOrDefault<Eco.Gameplay.Items.Tag, HashSet<Type>>(ingredient.Tag))
                             {
-                                if (!itemTypeGroup.ContainsKey(type))
+                                if (!itemTypeGroup.ContainsKey(type) )
+                                {
                                     itemGroupSearchFail = true;
+                                    if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search tag as item " + type.ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
+                                }
                                 else if (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0)
-                                        tagItemGroup = itemTypeGroup[type];
+                                {
+                                    tagItemGroup = itemTypeGroup[type];
+                                    goodItemsInTagCount++;
+                                }
+                                    
                             }
                             if (tagItemGroup > calcGroup) calcGroup = tagItemGroup;
+                            if (PanicMode && goodItemsInTagCount > 0) itemGroupSearchFail = saveGroupSearchFail;
                         }
                         else if (ingredient.Item != null)
-                        {    
+                        {
                             if (!itemTypeGroup.ContainsKey(ingredient.Item.GetType()))
+                            { 
                                 itemGroupSearchFail = true;
-                            else if(itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
-                                    calcGroup = itemTypeGroup[ingredient.Item.GetType()];
+                                if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search  item " + ingredient.Item.GetType().ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
+                            }
+                            else if (itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
+                            calcGroup = itemTypeGroup[ingredient.Item.GetType()];
                         }
                     }
 
                     foreach (RequiresSkillAttribute reqskill in recipeFamily.RequiredSkills)
                     {
                         if (!skillGroup.ContainsKey(reqskill.SkillItem))
+                        {
                             itemGroupSearchFail = true;
-                        else if(skillGroup[reqskill.SkillItem] > calcGroup)
-                                calcGroup = skillGroup[reqskill.SkillItem];
+                            if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search skill  " + reqskill.SkillItem.ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
+                        }
+                        else if (skillGroup[reqskill.SkillItem] > calcGroup)
+                            calcGroup = skillGroup[reqskill.SkillItem];
                     }
 
                     if (!itemGroupSearchFail)
                     {
+                        foreach (Recipe recipe in recipeFamily.Recipes)
+                        {
+                            foreach (CraftingElement product in recipe.Items)
+                            {
+                                if (!itemTypeGroup.ContainsKey(product.Item.GetType()))
+                                {
+                                    if (product.Item is SkillBook)
+                                    {
+                                        calcGroup += 1 ;
+                                        Skill skillByBook = (Skill)Item.Get(SkillsLookUp.SkillToSkillBook.FirstOrDefault(x => x.Value == product.Item.GetType()).Key);
+                                        ConsoleLogWriter.Instance.Write("Search skill to Item  " + product.Item + " reselt = " + skillByBook + "\n");
+                                        if (skillByBook != null && !skillGroup.ContainsKey(skillByBook))
+                                            skillGroup.Add(skillByBook, calcGroup);
+
+                                    }
+                                    else if (product.Item is SkillScroll)
+                                    {
+                                        calcGroup += 1;
+                                        Skill skillByScroll = (Skill)Item.Get(SkillsLookUp.SkillToSkillScroll.FirstOrDefault(x => x.Value == product.Item.GetType()).Key);
+                                        ConsoleLogWriter.Instance.Write("Search skill to Item  " + product.Item + " reselt = " + skillByScroll + "\n");
+                                        if (skillByScroll != null && !skillGroup.ContainsKey(skillByScroll))
+                                            skillGroup.Add(skillByScroll, calcGroup);
+                                    }
+                                    itemTypeGroup.Add(product.Item.GetType(), calcGroup);
+                                    
+                                }
+                            }
+                        }
+                        
                         recipeFamily.Recipes
                             .SelectMany(recipe => recipe.Items)
                             .Where(product => !itemTypeGroup.ContainsKey(product.Item.GetType()))
                             .ToList()
                             .ForEach(product => itemTypeGroup.Add(product.Item.GetType(), calcGroup));
+
                         this.recipeFamilyGroup.Add(recipeFamily, calcGroup);
+                        changesCount++;
                     }
                 }
 
+                if (changesCount > 0) PanicMode = false;
+                else PanicMode = true;
+
             }
+            foreach (var i in skillGroup)
+            {
+                ConsoleLogWriter.Instance.Write("TGroup: " + (i.Value.ToString() +" | Skill: " + i.Key.DisplayName) + "\n");
+            }
+
+
+
+
             ConsoleLogWriter.Instance.Write("groupsRecipeFamily.Count = " + recipeFamilyGroup.Count + "\n");
             ConsoleLogWriter.Instance.Write("groupsSkill.Count = " + skillGroup.Count + "\n");
             ConsoleLogWriter.Instance.Write("groupsItems.Count = " + itemTypeGroup.Count + "\n");
@@ -271,13 +330,22 @@ namespace Eco.Mod.VeN.RecipeThrottle
         [LocDescription("The global coefficient affecting all recipes")]
         public float GlobalCoefficient { get; set; } = 1f;
 
-        [LocCategory("Global")]
-        [LocDescription("The global coefficient affecting the quantity. !! Will be implemented in the next release !! ")]
-        public float impactsQuantity { get; set; } = 1f;
+        //[LocCategory("Global")]
+        //[LocDescription("The global coefficient affecting the quantity. !! Will be implemented in the next release !! ")]
+        //public TrottleImpact impactsQuantity { get; set; } = TrottleImpact.Full;
 
-        [LocCategory("Global")]
-        [LocDescription("The global coefficient affecting the crafting time. !! Will be implemented in the next release !! ")]
-        public float impactsCraftTime { get; set; } = 1f;
+        //[LocCategory("Global")]
+        //[LocDescription("The global coefficient affecting the crafting time. !! Will be implemented in the next release !! ")]
+        //public TrottleImpact impactsCraftTime { get; set; } = TrottleImpact.Full;
+
+        //[LocCategory("Global")]
+        //[LocDescription("Recipe Family exception !! Will be implemented in the next release !! ")]
+        //public SerializedSynchronizedCollection<KeyValuePair<string,int>> RecipeFamilyExeptions { get; set; } = new SerializedSynchronizedCollection<KeyValuePair<string, int>>();
+
+        //[LocCategory("Global")]
+        //[LocDescription("Recipe Family exception !! Will be implemented in the next release !! ")]
+        //public string[] RecipeFamilyExeptions2 { get; set; } = new string[10];
+
 
         [LocCategory("Groups")]
         [LocDescription("Group 0 ")]
@@ -350,11 +418,11 @@ namespace Eco.Mod.VeN.RecipeThrottle
             return Task.CompletedTask;
         }
 
-        public string GetDisplayTitle() => "RecipeFamily grops";
+        public string GetDisplayTitle() => "RecipeFamily Groups list";
         public string GetDisplayText()
         {
             StringBuilder stringBuilder = new StringBuilder(1024);
-            stringBuilder.AppendLine((string)Localizer.DoStr("RecipeFamily Group:"));
+            //stringBuilder.AppendLine((string)Localizer.DoStr("RecipeFamily Group:"));
             foreach (var line in this.recipeThrottle.recipeFamilyGroup)
                 stringBuilder.AppendLine($"{line.Value} | {line.Key.DisplayName.ToString()}");
             stringBuilder.AppendLine();
