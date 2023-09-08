@@ -133,8 +133,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
             Dictionary<Skill, int> skillGroup = new Dictionary<Skill, int>();
             Dictionary<Type, int> itemTypeGroup = new Dictionary<Type, int>();
 
-            ConsoleLogWriter.Instance.Write("Start RecipeFamily Groups update " + "\n");
-
             //Заполнение группы 0 у items без рецептов
             foreach (Item item in Item.AllItems)
             {
@@ -151,16 +149,13 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
             //Циклы обхода по рецептам с попыткой посчитать группу
             bool PanicMode = false;
-            for (int i = 1; i < 20 && this.recipeFamilyGroup.Count <= RecipeFamily.AllRecipes.Length; i++)
+            for (int i = 1; i < 30 && this.recipeFamilyGroup.Count <= RecipeFamily.AllRecipes.Length; i++)
             {
-                bool pointOfInterest = true; //DELME
                 int changesCount = 0;
 
                 foreach (RecipeFamily recipeFamily in RecipeFamily.AllRecipes)
                 {
                     if (this.recipeFamilyGroup.ContainsKey(recipeFamily)) continue;
-                    if (recipeFamily.DisplayName.ToString() == "Gathering Research Paper Basic") pointOfInterest = true;
-
 
                     int calcGroup = 0;
                     bool itemGroupSearchFail = false;
@@ -178,7 +173,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                                 if (!itemTypeGroup.ContainsKey(type) )
                                 {
                                     itemGroupSearchFail = true;
-                                    if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search tag as item " + type.ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
                                 }
                                 else if (itemTypeGroup[type] < tagItemGroup || tagItemGroup < 0)
                                 {
@@ -195,7 +189,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                             if (!itemTypeGroup.ContainsKey(ingredient.Item.GetType()))
                             { 
                                 itemGroupSearchFail = true;
-                                if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search  item " + ingredient.Item.GetType().ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
                             }
                             else if (itemTypeGroup[ingredient.Item.GetType()] > calcGroup)
                             calcGroup = itemTypeGroup[ingredient.Item.GetType()];
@@ -207,7 +200,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                         if (!skillGroup.ContainsKey(reqskill.SkillItem))
                         {
                             itemGroupSearchFail = true;
-                            if (pointOfInterest) ConsoleLogWriter.Instance.Write(" Fail search skill  " + reqskill.SkillItem.ToString() + " for recipe " + recipeFamily.DisplayName.ToString() + "\n");
                         }
                         else if (skillGroup[reqskill.SkillItem] > calcGroup)
                             calcGroup = skillGroup[reqskill.SkillItem];
@@ -225,7 +217,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                                     {
                                         calcGroup += 1 ;
                                         Skill skillByBook = (Skill)Item.Get(SkillsLookUp.SkillToSkillBook.FirstOrDefault(x => x.Value == product.Item.GetType()).Key);
-                                        ConsoleLogWriter.Instance.Write("Search skill to Item  " + product.Item + " reselt = " + skillByBook + "\n");
                                         if (skillByBook != null && !skillGroup.ContainsKey(skillByBook))
                                             skillGroup.Add(skillByBook, calcGroup);
 
@@ -234,7 +225,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                                     {
                                         calcGroup += 1;
                                         Skill skillByScroll = (Skill)Item.Get(SkillsLookUp.SkillToSkillScroll.FirstOrDefault(x => x.Value == product.Item.GetType()).Key);
-                                        ConsoleLogWriter.Instance.Write("Search skill to Item  " + product.Item + " reselt = " + skillByScroll + "\n");
                                         if (skillByScroll != null && !skillGroup.ContainsKey(skillByScroll))
                                             skillGroup.Add(skillByScroll, calcGroup);
                                     }
@@ -259,13 +249,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 else PanicMode = true;
 
             }
-            foreach (var i in skillGroup)
-            {
-                ConsoleLogWriter.Instance.Write("TGroup: " + (i.Value.ToString() +" | Skill: " + i.Key.DisplayName) + "\n");
-            }
-
-
-
 
             ConsoleLogWriter.Instance.Write("groupsRecipeFamily.Count = " + recipeFamilyGroup.Count + "\n");
             ConsoleLogWriter.Instance.Write("groupsSkill.Count = " + skillGroup.Count + "\n");
@@ -480,20 +463,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     }
                     recipeFamily.FirePropertyChanged("Recipes");
                     recipeFamily.FirePropertyChanged("Ingredients");
-                    //DELME
-                    string str = "";
-                    str += ("RecipeFamily: " + recipeFamily.DisplayName + " RequiredSkills: "); 
-                        foreach ( RequiresSkillAttribute skill in recipeFamily.RequiredSkills )
-                        {
-                        str += (skill.SkillItem.DisplayName + "; ");
-                        }
-                        foreach ( IngredientElement ingredient in recipeFamily.DefaultRecipe.Ingredients )
-                        {
-                        str += (ingredient.InnerName + "; ");
-                        }
-                    str += "\n";
-                    //ConsoleLogWriter.Instance.Write(str);
-                    //DELME
 
                 }
                 ConsoleLogWriter.Instance.Write("RecipeThrottle: Success inject Quantity value for " + i + " IngredientElements.\n");
