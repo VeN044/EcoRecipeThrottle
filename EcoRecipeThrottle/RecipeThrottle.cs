@@ -42,42 +42,6 @@ using Eco.Shared.IoC;
 
 namespace Eco.Mod.VeN.RecipeThrottle
 {
-    public enum TrottleImpact
-    {
-        [LocDisplayName("  0% no changes")]
-        None,
-        [LocDisplayName(" 25% low changes")]
-        Low,
-        [LocDisplayName(" 50% mid changes")]
-        Medium,
-        [LocDisplayName(" 75% hight changes")]
-        Hight,
-        [LocDisplayName("100% full impact")]
-        Full
-    }
-
-    public static class TrottleImpactHelpers
-    {
-        private static Dictionary<TrottleImpact, float> impactPercentages = new Dictionary<TrottleImpact, float>
-    {
-        { TrottleImpact.None, 0f },
-        { TrottleImpact.Low, 0.25f },
-        { TrottleImpact.Medium, 0.50f },
-        { TrottleImpact.Hight, 0.75f },
-        { TrottleImpact.Full, 1f }
-    };
-
-        public static float GetPercentage(TrottleImpact impact)
-        {
-            if (impactPercentages.ContainsKey(impact))
-            {
-                return impactPercentages[impact];
-            }
-            return 0f; 
-        }
-    }
-
-
     public class RecipeThrottle
     {
         /// Manipulete Wraping of IDynamicValue to insert Multiply coefficient to it.
@@ -110,7 +74,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
             MultiDynamicValue newLaborInCalories = WrapDynamicValue(recipeFamily.LaborInCalories , calloriesMultiplyer);
             recipeFamily.LaborInCalories = newLaborInCalories;
             recipeFamily.FirePropertyChanged("LaborInCallories");
-            //PrivateValueHelper.SetPrivateFieldValue<float>(recipeFamily, "<Labor>k__BackingField", recipeFamily.LaborInCalories.GetBaseValue);
 
             recipeFamily.FirePropertyChanged("Labor");
 
@@ -138,7 +101,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
             {
                 recipeFamily.LaborInCalories = newLaborInCalories;
                 recipeFamily.FirePropertyChanged("LaborInCallories");         
-                //PrivateValueHelper.SetPrivateFieldValue<float>(recipeFamily, "<Labor>k__BackingField", recipeFamily.LaborInCalories.GetBaseValue);
                 recipeFamily.FirePropertyChanged("Labor");
             }
 
@@ -335,7 +297,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
             ConsoleLogWriter.Instance.Write("groupsItems.Count = " + itemTypeGroup.Count + "\n");
             ConsoleLogWriter.Instance.Write("RecipeFamily.AllRecipes.Length = " + RecipeFamily.AllRecipes.Length + "\n");
 
-            ConsoleLogWriter.Instance.Write("maxGroup = " + maxGroup + "\n");
             pluginConfig.Config.UpdateRecipeGroupsSettingsCollection(maxGroup+1);
 
         }
@@ -355,7 +316,9 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 case MultiplierType.Quantity :
                     if (recipeFamilyGroup.ContainsKey(recipeFamily))
                     {
-                        float timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
+                        float timeParametr = 1f;
+                        if (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime != 0)
+                            timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
                         result *= (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].QuantityMultiplier - 1) * timeParametr + 1;
                     }                        
                     result *= globalQuantityMultiplier;
@@ -363,7 +326,9 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 case MultiplierType.CraftTime :
                     if (recipeFamilyGroup.ContainsKey(recipeFamily))
                     {
-                        float timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
+                        float timeParametr = 1f;
+                        if (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime != 0)
+                            timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
                         result *= (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].CraftTimeMultiplier - 1) * timeParametr + 1;
                     }
                      
@@ -372,7 +337,9 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 case MultiplierType.Callories :
                     if (recipeFamilyGroup.ContainsKey(recipeFamily))
                     {
-                        float timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
+                        float timeParametr = 1f;
+                        if (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime != 0)
+                            timeParametr = GetResultOfTimeFunction(config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].StartFallTime, config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].EndFallTime);
                         result *= (config.RecipeGroupsSettings[recipeFamilyGroup[recipeFamily]].CaloriesMultiplier - 1) * timeParametr + 1;
                     }
                     result = result * globalCaloriesMultiplier;
@@ -468,15 +435,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
         [LocDescription("")]
         public float GlobalCaloriesMultiplier { get; set; } = 1f;
 
-/*        [LocCategory("Global")]
-        public TrottleImpact QuantityImpact { get; set; } = TrottleImpact.Full;
-
-        [LocCategory("Global")]
-        public TrottleImpact CraftTimeImpact { get; set; } = TrottleImpact.Full;
-
-        [LocCategory("Global")]
-        public TrottleImpact CaloriesImpact { get; set; } = TrottleImpact.Full;
-*/
         [LocCategory("Recipe groups")]
         [LocDescription("Recipe Groups settings")]
        public SerializedSynchronizedCollection<RecipeGroupSettings> RecipeGroupsSettings { get; set; } = new SerializedSynchronizedCollection<RecipeGroupSettings>();
@@ -487,7 +445,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
             for (int i = 0; (i < elementsCount) || (i < this.RecipeGroupsSettings.Count); i++) 
             {
-                ConsoleLogWriter.Instance.Write("i = " + i + " elementsCount = " + elementsCount + " RecipeGroupSettings.Count = " + this.RecipeGroupsSettings.Count + "\n");
                 if (i >= this.RecipeGroupsSettings.Count && ( i < elementsCount))
                 {
                     this.RecipeGroupsSettings.Add(new RecipeGroupSettings());
@@ -499,8 +456,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                 }
                 else this.RecipeGroupsSettings[i].Id = i;
             }
-            ConsoleLogWriter.Instance.Write("this.RecipeGroupsSettings.Count = " + this.RecipeGroupsSettings.Count + "\n");
-
        }
 
     }
@@ -532,15 +487,15 @@ namespace Eco.Mod.VeN.RecipeThrottle
 
             OnParamEnableChanged();
 
-            TimerTask timerTask = new TimerTask(TimeSpan.FromSeconds(60));
-            string id = "myTimer"; // Идентификатор таймера
+            TimerTask timerTask = new TimerTask(TimeSpan.FromSeconds(600));
+            string id = "RecipeThrottleTimer"; // Идентификатор таймера
 
             timerTask.Start(() =>
             {
                 OnGlobalCoefficientChanged();
                 // Логика задачи, которую необходимо выполнить
-                ConsoleLogWriter.Instance.Write(string.Format("The Elapsed event was raised at {0:HH:mm:ss.fff}\n", DateTime.Now));
-                ConsoleLogWriter.Instance.Write(string.Format("The Elapsed event was raised at {0}\n", WorldTime.Seconds ));
+                //ConsoleLogWriter.Instance.Write(string.Format("The Elapsed event was raised at {0:HH:mm:ss.fff}\n", DateTime.Now));
+                //ConsoleLogWriter.Instance.Write(string.Format("The Elapsed event was raised at {0}\n", WorldTime.Seconds ));
             }, id);
 
             //UserManager.OnUserLoggedIn.Add(this.OnUserLogin);                   // Register our OnUserLoggedIn event handler for showing players our welcome message.
@@ -555,7 +510,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
         public string GetDisplayText()
         {
             StringBuilder stringBuilder = new StringBuilder(1024);
-            //stringBuilder.AppendLine((string)Localizer.DoStr("RecipeFamily Group:"));
             foreach (var line in this.recipeThrottle.recipeFamilyGroup)
                 stringBuilder.AppendLine($"{line.Value} | {line.Key.DisplayName.ToString()}");
             stringBuilder.AppendLine();
@@ -599,66 +553,6 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     recipeFamily.FirePropertyChanged("LaborInCallories");
                     recipeFamily.FirePropertyChanged("CraftMinutes");
 
-                    /*
-                    //IEnumerable<WorldObjectItem> Tables = Enumerable.Select<Type, WorldObjectItem>(CraftingComponent.TablesForRecipe(recipeFamily.GetType()), (Func<Type, WorldObjectItem>)(table => WorldObjectItem.GetCreatingItemTemplateFromType(table))).NonNull<WorldObjectItem>();
-                    foreach (Type tableItem in CraftingComponent.TablesForRecipe(recipeFamily.GetType()))
-                    {
-                        IEnumerable<WorldObject> tableObjects = Enumerable.Where<WorldObject>(ServiceHolder<IWorldObjectManager>.Obj.All, (Func<WorldObject, bool>)(worldObject => Type.ReferenceEquals(worldObject.GetType(), tableItem)));
-                        //ConsoleLogWriter.Instance.Write("Table " + table.DisplayName + " | " + table.GetPlacementString() +".\n");
-                        foreach (WorldObject tableObject in tableObjects)
-                        {
-                            
-                            ConsoleLogWriter.Instance.Write("TableObjecte " + tableObject.DisplayName + ".\n");
-                            ConsoleLogWriter.Instance.Write("tableObject.Components.Count() " + tableObject.Components.Count() + ".\n");
-
-                            foreach (WorldObjectComponent component  in tableObject.Components)
-                            {
-                                if (component is CraftingComponent)
-                                {
-                                    CraftingComponent craftingcomponent = component as CraftingComponent;
-                                   
-                                    foreach (RecipeFamily rcpt in craftingcomponent.Recipes)
-                                    {
-                                        rcpt.FirePropertyChanged("Recipes");
-                                        rcpt.FirePropertyChanged("Ingredients");
-                                        rcpt.LaborInCalories.FirePropertyChanged("Values");
-                                        rcpt.FirePropertyChanged("LaborInCallories");
-                                        rcpt.FirePropertyChanged("Labor");
-
-                                        
-                                        rcpt.FirePropertyChanged("CraftMinutes");
-                                    }
-                                    ConsoleLogWriter.Instance.Write("TabtableObjectle " + craftingcomponent.Recipes.Count() + ".\n");
-                                    craftingcomponent.FirePropertyChanged("ResourceEfficiencyModule");
-                                    craftingcomponent.FirePropertyChanged("SpeedEfficiencyModule");
-                                    craftingcomponent.FirePropertyChanged("LaborReservationModule");
-                                    //craftingcomponent.FirePropertyChanged("ValidTalents");
-                                    //craftingcomponent.FirePropertyChanged("Recipes");
-                                }
-
-
-                            }
-                            
-
-                        }
-
-                    }*/
-                    /*
-                    foreach ( Item item in Item.AllItems)
-                    {
-                        Type type = item.GetType();
-                        bool hasAttribute = type.IsDefined(typeof(CraftingComponent), false);
-                        if (hasAttribute)
-                        {
-                            ConsoleLogWriter.Instance.Write("Table " + item.DisplayName + " | " + item.ToString() + ".\n");
-                            
-                        }
-                        item.FirePropertyChanged("Recipes");
-                        item.FirePropertyChanged("ResourceEfficiencyModule");
-                        item.FirePropertyChanged("SpeedEfficiencyModule");
-                        item.FirePropertyChanged("LaborReservationModule");
-                    }
-                    */
                 }
 
                 IEnumerable<Type> objectsFromComponent = WorldObjectManager.GetWorldObjectsFromComponent(typeof(CraftingComponent), false);
@@ -667,36 +561,15 @@ namespace Eco.Mod.VeN.RecipeThrottle
                     IEnumerable<WorldObject> tableObjects = Enumerable.Where<WorldObject>(ServiceHolder<IWorldObjectManager>.Obj.All, (Func<WorldObject, bool>)(worldObject => Type.ReferenceEquals(worldObject.GetType(), worldObjectType)));
                     foreach (WorldObject tableObject in tableObjects)
                     {
-
-                        ConsoleLogWriter.Instance.Write("TableObjecte " + tableObject.DisplayName + ".\n");
-                        ConsoleLogWriter.Instance.Write("tableObject.Components.Count() " + tableObject.Components.Count() + ".\n");
-
                         foreach (WorldObjectComponent component in tableObject.Components)
                         {
                             if (component is CraftingComponent)
                             {
                                 CraftingComponent craftingcomponent = component as CraftingComponent;
-
-                                /*foreach (RecipeFamily rcpt in craftingcomponent.Recipes)
-                                {
-                                    rcpt.FirePropertyChanged("Recipes");
-                                    rcpt.FirePropertyChanged("Ingredients");
-                                    rcpt.LaborInCalories.FirePropertyChanged("Values");
-                                    rcpt.FirePropertyChanged("LaborInCallories");
-                                    rcpt.FirePropertyChanged("Labor");
-
-
-                                    rcpt.FirePropertyChanged("CraftMinutes");
-                                }*/
-                                ConsoleLogWriter.Instance.Write("TabtableObjectle " + craftingcomponent.Recipes.Count() + ".\n");
                                 craftingcomponent.FirePropertyChanged("ResourceEfficiencyModule");
                                 craftingcomponent.FirePropertyChanged("SpeedEfficiencyModule");
                                 craftingcomponent.FirePropertyChanged("LaborReservationModule");
-                                //craftingcomponent.FirePropertyChanged("ValidTalents");
-                                //craftingcomponent.FirePropertyChanged("Recipes");
                             }
-
-
                         }
                     }
                 }
